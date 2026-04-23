@@ -20,12 +20,10 @@ class SniperGame {
         this.mouseX = 0;
         this.mouseY = 0;
         
-        this.cameraX = 0;
-        this.cameraY = 0;
+        this.viewX = 0;
+        this.viewY = 0;
         
         this.building = {
-            x: 0,
-            y: 0,
             width: 800,
             height: 1000,
             floors: 10,
@@ -36,23 +34,18 @@ class SniperGame {
         
         this.birds = [];
         this.birdSpawnTimer = 0;
-        this.birdSpawnInterval = 3000;
         
         this.isInvincible = false;
         this.invincibleTimer = 0;
-        this.invincibleDuration = 15000;
         
         this.noAimTimer = 0;
-        this.noAimDamageTime = 8000;
         this.enemiesAimingAtPlayer = false;
         
         this.warningActive = false;
         this.warningTimer = 0;
-        this.warningDuration = 2000;
         
         this.reloading = false;
         this.reloadTimer = 0;
-        this.reloadDuration = 1500;
         
         this.lastTime = 0;
         
@@ -72,9 +65,6 @@ class SniperGame {
     resizeCanvas() {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
-        
-        this.building.x = (this.canvas.width - this.building.width) / 2;
-        this.building.y = (this.canvas.height - this.building.height) / 2;
     }
     
     setupEventListeners() {
@@ -86,8 +76,11 @@ class SniperGame {
                 const centerX = this.canvas.width / 2;
                 const centerY = this.canvas.height / 2;
                 
-                this.cameraX = (this.mouseX - centerX) / this.zoomLevel;
-                this.cameraY = (this.mouseY - centerY) / this.zoomLevel;
+                const maxMoveX = (this.building.width * this.zoomLevel - this.canvas.width) / 2;
+                const maxMoveY = (this.building.height * this.zoomLevel - this.canvas.height) / 2;
+                
+                this.viewX = (this.mouseX - centerX) / this.zoomLevel;
+                this.viewY = (this.mouseY - centerY) / this.zoomLevel;
             }
         });
         
@@ -154,8 +147,8 @@ class SniperGame {
         this.reloading = false;
         this.birds = [];
         this.birdSpawnTimer = 0;
-        this.cameraX = 0;
-        this.cameraY = 0;
+        this.viewX = 0;
+        this.viewY = 0;
         
         this.initializeWindows();
         
@@ -169,19 +162,22 @@ class SniperGame {
         
         const windowWidth = 100;
         const windowHeight = 80;
-        const windowGapX = 30;
-        const windowGapY = 20;
+        const gapX = 30;
+        const gapY = 20;
         
-        const totalWidth = this.building.windowsPerFloor * (windowWidth + windowGapX) - windowGapX;
-        const totalHeight = this.building.floors * (windowHeight + windowGapY) - windowGapY;
+        const buildingX = (this.canvas.width - this.building.width) / 2;
+        const buildingY = (this.canvas.height - this.building.height) / 2;
         
-        const startX = this.building.x + (this.building.width - totalWidth) / 2;
-        const startY = this.building.y + (this.building.height - totalHeight) / 2;
+        const totalWindowsWidth = this.building.windowsPerFloor * windowWidth + (this.building.windowsPerFloor - 1) * gapX;
+        const totalWindowsHeight = this.building.floors * windowHeight + (this.building.floors - 1) * gapY;
+        
+        const startX = buildingX + (this.building.width - totalWindowsWidth) / 2;
+        const startY = buildingY + (this.building.height - totalWindowsHeight) / 2;
         
         for (let floor = 0; floor < this.building.floors; floor++) {
             for (let w = 0; w < this.building.windowsPerFloor; w++) {
-                const x = startX + w * (windowWidth + windowGapX);
-                const y = startY + floor * (windowHeight + windowGapY);
+                const x = startX + w * (windowWidth + gapX);
+                const y = startY + floor * (windowHeight + gapY);
                 
                 this.windows.push({
                     x: x,
@@ -193,8 +189,7 @@ class SniperGame {
                     occupied: false,
                     occupantType: null,
                     occupantTimer: 0,
-                    occupantDuration: 0,
-                    isAimingAtPlayer: false
+                    occupantDuration: 0
                 });
             }
         }
@@ -235,7 +230,6 @@ class SniperGame {
                     window.occupied = false;
                     window.occupantType = null;
                     window.occupantTimer = 0;
-                    window.isAimingAtPlayer = false;
                 }
             } else {
                 if (Math.random() < 0.003) {
@@ -243,19 +237,14 @@ class SniperGame {
                     window.occupantType = Math.random() < 0.6 ? 'criminal' : 'civilian';
                     window.occupantTimer = 0;
                     window.occupantDuration = 2000 + Math.random() * 4000;
-                    window.isAimingAtPlayer = this.enemiesAimingAtPlayer && window.occupantType === 'criminal';
                 }
-            }
-            
-            if (this.enemiesAimingAtPlayer && window.occupied && window.occupantType === 'criminal') {
-                window.isAimingAtPlayer = true;
             }
         }
     }
     
     updateBirds(deltaTime) {
         this.birdSpawnTimer += deltaTime;
-        if (this.birdSpawnTimer >= this.birdSpawnInterval) {
+        if (this.birdSpawnTimer >= 3000) {
             this.birdSpawnTimer = 0;
             this.spawnBird();
         }
@@ -263,7 +252,6 @@ class SniperGame {
         for (let i = this.birds.length - 1; i >= 0; i--) {
             const bird = this.birds[i];
             bird.x += bird.speed * (deltaTime / 16);
-            bird.y += Math.sin(bird.x * 0.02) * 0.5;
             bird.wingTimer += deltaTime;
             
             if (bird.x > this.canvas.width + 50 || bird.x < -50) {
@@ -274,7 +262,7 @@ class SniperGame {
     
     spawnBird() {
         const fromLeft = Math.random() < 0.5;
-        const bird = {
+        this.birds.push({
             x: fromLeft ? -30 : this.canvas.width + 30,
             y: 80 + Math.random() * 150,
             width: 35,
@@ -282,14 +270,13 @@ class SniperGame {
             speed: (fromLeft ? 1 : -1) * (2 + Math.random() * 2),
             baseSpeed: (fromLeft ? 1 : -1) * (2 + Math.random() * 2),
             wingTimer: 0
-        };
-        this.birds.push(bird);
+        });
     }
     
     updateWarning(deltaTime) {
         if (this.warningActive) {
             this.warningTimer += deltaTime;
-            if (this.warningTimer >= this.warningDuration) {
+            if (this.warningTimer >= 2000) {
                 this.warningActive = false;
                 this.warningTimer = 0;
                 document.getElementById('warning').classList.add('hidden');
@@ -300,7 +287,7 @@ class SniperGame {
     updateReload(deltaTime) {
         if (this.reloading) {
             this.reloadTimer += deltaTime;
-            if (this.reloadTimer >= this.reloadDuration) {
+            if (this.reloadTimer >= 1500) {
                 this.reloading = false;
                 this.bullets = this.maxBullets;
                 this.reloadTimer = 0;
@@ -324,8 +311,7 @@ class SniperGame {
     updateNoAimTimer(deltaTime) {
         if (!this.isAiming) {
             this.noAimTimer += deltaTime;
-            
-            if (this.noAimTimer >= this.noAimDamageTime) {
+            if (this.noAimTimer >= 8000) {
                 this.health -= 1;
                 this.noAimTimer = 0;
                 this.enemiesAimingAtPlayer = true;
@@ -344,27 +330,31 @@ class SniperGame {
             bird.speed = bird.baseSpeed * 3;
         }
         
+        const buildingX = (this.canvas.width - this.building.width) / 2;
+        const buildingY = (this.canvas.height - this.building.height) / 2;
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
         
-        const worldShotX = this.cameraX + this.building.x + this.building.width / 2;
-        const worldShotY = this.cameraY + this.building.y + this.building.height / 2;
+        const shotWorldX = buildingX + this.building.width / 2 + this.viewX;
+        const shotWorldY = buildingY + this.building.height / 2 + this.viewY;
         
         let hit = false;
         
-        for (let bird of this.birds) {
-            const birdScreenX = centerX + (bird.x - (this.building.x + this.building.width / 2) - this.cameraX) * this.zoomLevel;
-            const birdScreenY = centerY + (bird.y - (this.building.y + this.building.height / 2) - this.cameraY) * this.zoomLevel;
+        for (let i = this.birds.length - 1; i >= 0; i--) {
+            const bird = this.birds[i];
+            
+            const birdScreenX = centerX + (bird.x - (buildingX + this.building.width / 2) - this.viewX) * this.zoomLevel;
+            const birdScreenY = centerY + (bird.y - (buildingY + this.building.height / 2) - this.viewY) * this.zoomLevel;
             
             const dist = Math.sqrt(
                 Math.pow(this.mouseX - birdScreenX, 2) + 
                 Math.pow(this.mouseY - birdScreenY, 2)
             );
             
-            if (dist < 30) {
-                this.birds = this.birds.filter(b => b !== bird);
+            if (dist < 30 * this.zoomLevel) {
+                this.birds.splice(i, 1);
                 this.isInvincible = true;
-                this.invincibleTimer = this.invincibleDuration;
+                this.invincibleTimer = 15000;
                 document.getElementById('invincible-timer').classList.remove('hidden');
                 hit = true;
                 break;
@@ -377,8 +367,8 @@ class SniperGame {
                     const personWorldX = window.x + window.width / 2;
                     const personWorldY = window.y + window.height / 2;
                     
-                    const personScreenX = centerX + (personWorldX - (this.building.x + this.building.width / 2) - this.cameraX) * this.zoomLevel;
-                    const personScreenY = centerY + (personWorldY - (this.building.y + this.building.height / 2) - this.cameraY) * this.zoomLevel;
+                    const personScreenX = centerX + (personWorldX - (buildingX + this.building.width / 2) - this.viewX) * this.zoomLevel;
+                    const personScreenY = centerY + (personWorldY - (buildingY + this.building.height / 2) - this.viewY) * this.zoomLevel;
                     
                     const hitRadius = 25 * this.zoomLevel;
                     
@@ -485,11 +475,13 @@ class SniperGame {
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
-        this.renderBirdsNormal();
+        for (let bird of this.birds) {
+            this.drawBird(ctx, bird.x, bird.y, bird.wingTimer);
+        }
         
-        this.renderBuilding();
+        this.drawBuilding(ctx);
         
-        this.renderSniperRifle();
+        this.drawGun(ctx);
         
         ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.font = '20px Arial';
@@ -502,14 +494,11 @@ class SniperGame {
         const ctx = this.ctx;
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
-        
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        const scopeRadius = Math.min(this.canvas.width, this.canvas.height) * 0.42;
         
         ctx.save();
         ctx.beginPath();
-        const scopeRadius = Math.min(this.canvas.width, this.canvas.height) * 0.42;
-        ctx.arc(centerX, centerY, scopeRadius, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY, scopeRadius - 10, 0, Math.PI * 2);
         ctx.clip();
         
         const gradient = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
@@ -523,27 +512,72 @@ class SniperGame {
         ctx.translate(centerX, centerY);
         ctx.scale(this.zoomLevel, this.zoomLevel);
         ctx.translate(-centerX, -centerY);
-        ctx.translate(-this.cameraX, -this.cameraY);
+        ctx.translate(-this.viewX, -this.viewY);
         
-        this.renderBirdsZoomed();
+        for (let bird of this.birds) {
+            this.drawBird(ctx, bird.x, bird.y, bird.wingTimer);
+        }
         
-        this.renderBuilding();
+        this.drawBuilding(ctx);
         
         ctx.restore();
         ctx.restore();
         
-        this.renderScopeOverlay();
+        this.drawBlackBorders(ctx, centerX, centerY, scopeRadius);
+        
+        this.drawScopeBorder(ctx, centerX, centerY, scopeRadius);
+        this.drawCrosshair(ctx, centerX, centerY, scopeRadius);
+        
+        if (this.isInvincible) {
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.6)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, scopeRadius - 40, 0, Math.PI * 2);
+            ctx.stroke();
+        }
     }
     
-    renderBuilding() {
-        const ctx = this.ctx;
-        const b = this.building;
+    drawBlackBorders(ctx, centerX, centerY, scopeRadius) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.98)';
+        
+        ctx.fillRect(0, 0, this.canvas.width, centerY - scopeRadius);
+        
+        ctx.fillRect(0, centerY + scopeRadius, this.canvas.width, this.canvas.height - centerY - scopeRadius);
+        
+        ctx.fillRect(0, centerY - scopeRadius, centerX - scopeRadius, scopeRadius * 2);
+        
+        ctx.fillRect(centerX + scopeRadius, centerY - scopeRadius, this.canvas.width - centerX - scopeRadius, scopeRadius * 2);
+    }
+    
+    drawScopeBorder(ctx, centerX, centerY, scopeRadius) {
+        ctx.strokeStyle = '#111';
+        ctx.lineWidth = 15;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, scopeRadius - 5, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, scopeRadius - 12, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, scopeRadius - 18, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    
+    drawBuilding(ctx) {
+        const buildingX = (this.canvas.width - this.building.width) / 2;
+        const buildingY = (this.canvas.height - this.building.height) / 2;
         
         ctx.fillStyle = '#3a3a5e';
-        ctx.fillRect(b.x, b.y, b.width, b.height);
+        ctx.fillRect(buildingX, buildingY, this.building.width, this.building.height);
         
         ctx.fillStyle = '#2a2a4e';
-        ctx.fillRect(b.x + 10, b.y + 10, b.width - 20, b.height - 20);
+        ctx.fillRect(buildingX + 10, buildingY + 10, this.building.width - 20, this.building.height - 20);
         
         for (let window of this.windows) {
             ctx.fillStyle = '#0a0a1e';
@@ -563,13 +597,12 @@ class SniperGame {
             ctx.stroke();
             
             if (window.occupied) {
-                this.renderPerson(window);
+                this.drawPerson(ctx, window);
             }
         }
     }
     
-    renderPerson(window) {
-        const ctx = this.ctx;
+    drawPerson(ctx, window) {
         const x = window.x + window.width / 2;
         const y = window.y + window.height / 2;
         
@@ -600,37 +633,9 @@ class SniperGame {
             ctx.fillStyle = '#5a3a2a';
             ctx.fillRect(x - 12, y - 38, 24, 8);
         }
-        
-        if (window.isAimingAtPlayer && window.occupantType === 'criminal') {
-            ctx.fillStyle = '#444';
-            ctx.fillRect(x + 20, y, 25, 8);
-            
-            ctx.strokeStyle = '#ff0000';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(x + 45, y + 4);
-            ctx.lineTo(x + 60, y + 4);
-            ctx.stroke();
-        }
     }
     
-    renderBirdsNormal() {
-        const ctx = this.ctx;
-        
-        for (let bird of this.birds) {
-            this.renderBird(ctx, bird.x, bird.y, bird.wingTimer);
-        }
-    }
-    
-    renderBirdsZoomed() {
-        const ctx = this.ctx;
-        
-        for (let bird of this.birds) {
-            this.renderBird(ctx, bird.x, bird.y, bird.wingTimer);
-        }
-    }
-    
-    renderBird(ctx, x, y, wingTimer) {
+    drawBird(ctx, x, y, wingTimer) {
         ctx.fillStyle = '#1a1a1a';
         
         const wingUp = Math.sin(wingTimer * 0.015) > 0;
@@ -682,9 +687,7 @@ class SniperGame {
         ctx.fill();
     }
     
-    renderSniperRifle() {
-        const ctx = this.ctx;
-        
+    drawGun(ctx) {
         const gunX = this.canvas.width / 2 + 150;
         const gunY = this.canvas.height - 100;
         
@@ -709,75 +712,13 @@ class SniperGame {
         ctx.arc(-60, 30, 15, 0, Math.PI * 2);
         ctx.fill();
         
-        ctx.fillStyle = '#2a2a2a';
-        ctx.beginPath();
-        ctx.arc(-60, 30, 10, 0, Math.PI * 2);
-        ctx.fill();
-        
         ctx.fillStyle = '#3a5a3a';
         ctx.fillRect(-100, -15, 60, 25);
         
-        ctx.fillStyle = '#2a4a2a';
-        ctx.beginPath();
-        ctx.ellipse(-70, -15, 20, 8, 0, Math.PI, Math.PI * 2);
-        ctx.fill();
-        
         ctx.restore();
     }
     
-    renderScopeOverlay() {
-        const ctx = this.ctx;
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
-        const scopeRadius = Math.min(this.canvas.width, this.canvas.height) * 0.42;
-        
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.98)';
-        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        ctx.save();
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, scopeRadius - 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-        
-        ctx.strokeStyle = '#111';
-        ctx.lineWidth = 15;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, scopeRadius - 5, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, scopeRadius - 12, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        ctx.strokeStyle = '#555';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, scopeRadius - 18, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        this.renderCrosshair(centerX, centerY, scopeRadius);
-        
-        if (this.isInvincible) {
-            ctx.strokeStyle = 'rgba(255, 215, 0, 0.6)';
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, scopeRadius - 40, 0, Math.PI * 2);
-            ctx.stroke();
-            
-            ctx.fillStyle = 'rgba(255, 215, 0, 0.1)';
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, scopeRadius - 40, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
-    
-    renderCrosshair(centerX, centerY, scopeRadius) {
-        const ctx = this.ctx;
-        
+    drawCrosshair(ctx, centerX, centerY, scopeRadius) {
         ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)';
         ctx.lineWidth = 2;
         
@@ -801,34 +742,6 @@ class SniperGame {
         ctx.lineTo(centerX + scopeRadius - 50, centerY);
         ctx.stroke();
         
-        ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
-        ctx.lineWidth = 1;
-        
-        const tickSpacing = 50;
-        const tickLength = 15;
-        
-        for (let i = 1; i <= 6; i++) {
-            ctx.beginPath();
-            ctx.moveTo(centerX - i * tickSpacing, centerY);
-            ctx.lineTo(centerX - i * tickSpacing, centerY + tickLength);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(centerX + i * tickSpacing, centerY);
-            ctx.lineTo(centerX + i * tickSpacing, centerY + tickLength);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(centerX, centerY - i * tickSpacing);
-            ctx.lineTo(centerX + tickLength, centerY - i * tickSpacing);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(centerX, centerY + i * tickSpacing);
-            ctx.lineTo(centerX + tickLength, centerY + i * tickSpacing);
-            ctx.stroke();
-        }
-        
         ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -839,22 +752,6 @@ class SniperGame {
         ctx.beginPath();
         ctx.arc(centerX, centerY, 2, 0, Math.PI * 2);
         ctx.fill();
-        
-        ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-        ctx.lineWidth = 0.5;
-        
-        const smallTickSpacing = 10;
-        for (let i = 1; i <= 4; i++) {
-            ctx.beginPath();
-            ctx.moveTo(centerX - 20 - i * smallTickSpacing, centerY);
-            ctx.lineTo(centerX - 20 - i * smallTickSpacing, centerY + 5);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(centerX + 20 + i * smallTickSpacing, centerY);
-            ctx.lineTo(centerX + 20 + i * smallTickSpacing, centerY + 5);
-            ctx.stroke();
-        }
     }
 }
 
