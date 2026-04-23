@@ -13,34 +13,36 @@ class SniperGame {
         this.maxHealth = 20;
         
         this.isAiming = false;
-        this.zoomLevel = 1;
+        this.zoomLevel = 2;
         this.minZoom = 1;
-        this.maxZoom = 8;
+        this.maxZoom = 6;
         
         this.mouseX = 0;
         this.mouseY = 0;
         
+        this.cameraX = 0;
+        this.cameraY = 0;
+        
         this.building = {
+            x: 0,
+            y: 0,
+            width: 800,
+            height: 1000,
             floors: 10,
-            windowsPerFloor: 6,
-            windowWidth: 60,
-            windowHeight: 80,
-            windowGap: 20,
-            floorGap: 30
+            windowsPerFloor: 6
         };
         
         this.windows = [];
         
         this.birds = [];
         this.birdSpawnTimer = 0;
-        this.birdSpawnInterval = 5000;
+        this.birdSpawnInterval = 3000;
         
         this.isInvincible = false;
         this.invincibleTimer = 0;
         this.invincibleDuration = 15000;
         
         this.noAimTimer = 0;
-        this.noAimWarningTime = 5000;
         this.noAimDamageTime = 8000;
         this.enemiesAimingAtPlayer = false;
         
@@ -50,10 +52,9 @@ class SniperGame {
         
         this.reloading = false;
         this.reloadTimer = 0;
-        this.reloadDuration = 2000;
+        this.reloadDuration = 1500;
         
         this.lastTime = 0;
-        this.deltaTime = 0;
         
         this.init();
     }
@@ -71,12 +72,23 @@ class SniperGame {
     resizeCanvas() {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
+        
+        this.building.x = (this.canvas.width - this.building.width) / 2;
+        this.building.y = (this.canvas.height - this.building.height) / 2;
     }
     
     setupEventListeners() {
         this.canvas.addEventListener('mousemove', (e) => {
             this.mouseX = e.clientX;
             this.mouseY = e.clientY;
+            
+            if (this.isAiming) {
+                const centerX = this.canvas.width / 2;
+                const centerY = this.canvas.height / 2;
+                
+                this.cameraX = (this.mouseX - centerX) / this.zoomLevel;
+                this.cameraY = (this.mouseY - centerY) / this.zoomLevel;
+            }
         });
         
         this.canvas.addEventListener('contextmenu', (e) => {
@@ -87,6 +99,7 @@ class SniperGame {
                     this.noAimTimer = 0;
                     this.enemiesAimingAtPlayer = false;
                 }
+                this.updateZoomDisplay();
             }
         });
         
@@ -132,7 +145,7 @@ class SniperGame {
         this.bullets = this.maxBullets;
         this.health = this.maxHealth;
         this.isAiming = false;
-        this.zoomLevel = 1;
+        this.zoomLevel = 2;
         this.isInvincible = false;
         this.invincibleTimer = 0;
         this.noAimTimer = 0;
@@ -141,6 +154,8 @@ class SniperGame {
         this.reloading = false;
         this.birds = [];
         this.birdSpawnTimer = 0;
+        this.cameraX = 0;
+        this.cameraY = 0;
         
         this.initializeWindows();
         
@@ -152,24 +167,29 @@ class SniperGame {
     initializeWindows() {
         this.windows = [];
         
-        const totalWidth = this.building.windowsPerFloor * (this.building.windowWidth + this.building.windowGap) - this.building.windowGap;
-        const totalHeight = this.building.floors * (this.building.windowHeight + this.building.floorGap) - this.building.floorGap;
+        const windowWidth = 100;
+        const windowHeight = 80;
+        const windowGapX = 30;
+        const windowGapY = 20;
         
-        const startX = (this.canvas.width - totalWidth) / 2;
-        const startY = (this.canvas.height - totalHeight) / 2;
+        const totalWidth = this.building.windowsPerFloor * (windowWidth + windowGapX) - windowGapX;
+        const totalHeight = this.building.floors * (windowHeight + windowGapY) - windowGapY;
+        
+        const startX = this.building.x + (this.building.width - totalWidth) / 2;
+        const startY = this.building.y + (this.building.height - totalHeight) / 2;
         
         for (let floor = 0; floor < this.building.floors; floor++) {
-            for (let window = 0; window < this.building.windowsPerFloor; window++) {
-                const x = startX + window * (this.building.windowWidth + this.building.windowGap);
-                const y = startY + floor * (this.building.windowHeight + this.building.floorGap);
+            for (let w = 0; w < this.building.windowsPerFloor; w++) {
+                const x = startX + w * (windowWidth + windowGapX);
+                const y = startY + floor * (windowHeight + windowGapY);
                 
                 this.windows.push({
                     x: x,
                     y: y,
-                    width: this.building.windowWidth,
-                    height: this.building.windowHeight,
+                    width: windowWidth,
+                    height: windowHeight,
                     floor: floor,
-                    windowNum: window,
+                    windowNum: w,
                     occupied: false,
                     occupantType: null,
                     occupantTimer: 0,
@@ -181,11 +201,11 @@ class SniperGame {
     }
     
     gameLoop(currentTime) {
-        this.deltaTime = currentTime - this.lastTime;
+        const deltaTime = currentTime - this.lastTime;
         this.lastTime = currentTime;
         
         if (this.gameState === 'playing') {
-            this.update(this.deltaTime);
+            this.update(deltaTime);
         }
         
         this.render();
@@ -218,7 +238,7 @@ class SniperGame {
                     window.isAimingAtPlayer = false;
                 }
             } else {
-                if (Math.random() < 0.002) {
+                if (Math.random() < 0.003) {
                     window.occupied = true;
                     window.occupantType = Math.random() < 0.6 ? 'criminal' : 'civilian';
                     window.occupantTimer = 0;
@@ -256,13 +276,12 @@ class SniperGame {
         const fromLeft = Math.random() < 0.5;
         const bird = {
             x: fromLeft ? -30 : this.canvas.width + 30,
-            y: 50 + Math.random() * 150,
-            width: 30,
-            height: 20,
+            y: 80 + Math.random() * 150,
+            width: 35,
+            height: 25,
             speed: (fromLeft ? 1 : -1) * (2 + Math.random() * 2),
             baseSpeed: (fromLeft ? 1 : -1) * (2 + Math.random() * 2),
-            wingTimer: 0,
-            wingUp: true
+            wingTimer: 0
         };
         this.birds.push(bird);
     }
@@ -325,13 +344,24 @@ class SniperGame {
             bird.speed = bird.baseSpeed * 3;
         }
         
-        const shotX = this.mouseX;
-        const shotY = this.mouseY;
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        
+        const worldShotX = this.cameraX + this.building.x + this.building.width / 2;
+        const worldShotY = this.cameraY + this.building.y + this.building.height / 2;
         
         let hit = false;
         
         for (let bird of this.birds) {
-            if (this.isPointInRect(shotX, shotY, bird.x - bird.width/2, bird.y - bird.height/2, bird.width, bird.height)) {
+            const birdScreenX = centerX + (bird.x - (this.building.x + this.building.width / 2) - this.cameraX) * this.zoomLevel;
+            const birdScreenY = centerY + (bird.y - (this.building.y + this.building.height / 2) - this.cameraY) * this.zoomLevel;
+            
+            const dist = Math.sqrt(
+                Math.pow(this.mouseX - birdScreenX, 2) + 
+                Math.pow(this.mouseY - birdScreenY, 2)
+            );
+            
+            if (dist < 30) {
                 this.birds = this.birds.filter(b => b !== bird);
                 this.isInvincible = true;
                 this.invincibleTimer = this.invincibleDuration;
@@ -344,17 +374,25 @@ class SniperGame {
         if (!hit) {
             for (let window of this.windows) {
                 if (window.occupied) {
-                    const personX = window.x + window.width / 2;
-                    const personY = window.y + window.height / 2;
-                    const personWidth = 40;
-                    const personHeight = 60;
+                    const personWorldX = window.x + window.width / 2;
+                    const personWorldY = window.y + window.height / 2;
+                    
+                    const personScreenX = centerX + (personWorldX - (this.building.x + this.building.width / 2) - this.cameraX) * this.zoomLevel;
+                    const personScreenY = centerY + (personWorldY - (this.building.y + this.building.height / 2) - this.cameraY) * this.zoomLevel;
+                    
+                    const hitRadius = 25 * this.zoomLevel;
                     
                     let shouldHit = false;
                     
                     if (this.isInvincible && window.occupantType === 'criminal') {
                         shouldHit = true;
                     } else {
-                        if (this.isPointInRect(shotX, shotY, personX - personWidth/2, personY - personHeight/2, personWidth, personHeight)) {
+                        const dist = Math.sqrt(
+                            Math.pow(this.mouseX - personScreenX, 2) + 
+                            Math.pow(this.mouseY - personScreenY, 2)
+                        );
+                        
+                        if (dist < hitRadius) {
                             shouldHit = true;
                         }
                     }
@@ -376,10 +414,6 @@ class SniperGame {
                 }
             }
         }
-    }
-    
-    isPointInRect(px, py, rx, ry, rw, rh) {
-        return px >= rx && px <= rx + rw && py >= ry && py <= ry + rh;
     }
     
     reload() {
@@ -439,83 +473,94 @@ class SniperGame {
         } else {
             this.renderNormalView();
         }
-        
-        this.renderBirds();
-        this.renderSniperRifle();
-        
-        if (this.isAiming) {
-            this.renderScope();
-        }
     }
     
     renderNormalView() {
         const ctx = this.ctx;
         
         const gradient = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-        gradient.addColorStop(0, '#0a0a20');
-        gradient.addColorStop(0.5, '#1a1a3e');
-        gradient.addColorStop(1, '#2a2a4e');
+        gradient.addColorStop(0, '#1a3a5c');
+        gradient.addColorStop(0.3, '#2a4a6c');
+        gradient.addColorStop(1, '#1a2a3c');
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
+        this.renderBirdsNormal();
+        
         this.renderBuilding();
         
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.renderSniperRifle();
         
-        ctx.fillStyle = '#fff';
-        ctx.font = '24px Arial';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.font = '20px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('按鼠标右键开启瞄准镜', this.canvas.width / 2, this.canvas.height - 50);
+        ctx.fillText('按鼠标右键开启瞄准镜', this.canvas.width / 2, this.canvas.height - 80);
+        ctx.fillText('左键射击 | 滚轮调倍镜 | R键装弹', this.canvas.width / 2, this.canvas.height - 50);
     }
     
     renderAimedView() {
         const ctx = this.ctx;
-        
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
         
-        const mouseOffsetX = (this.mouseX - centerX) / this.zoomLevel;
-        const mouseOffsetY = (this.mouseY - centerY) / this.zoomLevel;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        ctx.save();
+        ctx.beginPath();
+        const scopeRadius = Math.min(this.canvas.width, this.canvas.height) * 0.42;
+        ctx.arc(centerX, centerY, scopeRadius, 0, Math.PI * 2);
+        ctx.clip();
+        
+        const gradient = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+        gradient.addColorStop(0, '#2a4a6c');
+        gradient.addColorStop(0.3, '#3a5a7c');
+        gradient.addColorStop(1, '#2a3a4c');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.scale(this.zoomLevel, this.zoomLevel);
-        ctx.translate(-centerX + mouseOffsetX, -centerY + mouseOffsetY);
+        ctx.translate(-centerX, -centerY);
+        ctx.translate(-this.cameraX, -this.cameraY);
         
-        const gradient = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-        gradient.addColorStop(0, '#1a1a3e');
-        gradient.addColorStop(1, '#2a2a5e');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.renderBirdsZoomed();
         
         this.renderBuilding();
         
         ctx.restore();
+        ctx.restore();
+        
+        this.renderScopeOverlay();
     }
     
     renderBuilding() {
         const ctx = this.ctx;
-        
-        const totalWidth = this.building.windowsPerFloor * (this.building.windowWidth + this.building.windowGap) - this.building.windowGap;
-        const totalHeight = this.building.floors * (this.building.windowHeight + this.building.floorGap) - this.building.floorGap;
-        
-        const startX = (this.canvas.width - totalWidth) / 2;
-        const startY = (this.canvas.height - totalHeight) / 2;
+        const b = this.building;
         
         ctx.fillStyle = '#3a3a5e';
-        ctx.fillRect(startX - 30, startY - 30, totalWidth + 60, totalHeight + 60);
+        ctx.fillRect(b.x, b.y, b.width, b.height);
         
         ctx.fillStyle = '#2a2a4e';
-        ctx.fillRect(startX - 20, startY - 20, totalWidth + 40, totalHeight + 40);
+        ctx.fillRect(b.x + 10, b.y + 10, b.width - 20, b.height - 20);
         
         for (let window of this.windows) {
             ctx.fillStyle = '#0a0a1e';
             ctx.fillRect(window.x, window.y, window.width, window.height);
             
-            ctx.strokeStyle = '#4a4a6e';
+            ctx.strokeStyle = '#5a5a7e';
             ctx.lineWidth = 3;
             ctx.strokeRect(window.x, window.y, window.width, window.height);
+            
+            ctx.strokeStyle = '#4a4a6e';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(window.x + window.width / 2, window.y);
+            ctx.lineTo(window.x + window.width / 2, window.y + window.height);
+            ctx.moveTo(window.x, window.y + window.height / 2);
+            ctx.lineTo(window.x + window.width, window.y + window.height / 2);
+            ctx.stroke();
             
             if (window.occupied) {
                 this.renderPerson(window);
@@ -528,196 +573,241 @@ class SniperGame {
         const x = window.x + window.width / 2;
         const y = window.y + window.height / 2;
         
-        ctx.save();
-        
         ctx.fillStyle = window.occupantType === 'criminal' ? '#2a2a3a' : '#4a6a8a';
-        ctx.fillRect(x - 15, y - 10, 30, 35);
+        ctx.fillRect(x - 18, y - 5, 36, 40);
         
         ctx.fillStyle = '#e8c4a0';
         ctx.beginPath();
-        ctx.arc(x, y - 20, 12, 0, Math.PI * 2);
+        ctx.arc(x, y - 25, 15, 0, Math.PI * 2);
         ctx.fill();
         
         if (window.occupantType === 'criminal') {
             ctx.fillStyle = '#1a1a1a';
-            ctx.fillRect(x - 10, y - 25, 20, 15);
+            ctx.fillRect(x - 12, y - 30, 24, 18);
             
             ctx.fillStyle = '#fff';
-            ctx.fillRect(x - 8, y - 22, 6, 4);
-            ctx.fillRect(x + 2, y - 22, 6, 4);
+            ctx.fillRect(x - 10, y - 27, 8, 5);
+            ctx.fillRect(x + 2, y - 27, 8, 5);
+            
+            ctx.fillStyle = '#000';
+            ctx.fillRect(x - 8, y - 26, 4, 3);
+            ctx.fillRect(x + 4, y - 26, 4, 3);
         } else {
             ctx.fillStyle = '#333';
-            ctx.fillRect(x - 6, y - 22, 4, 4);
-            ctx.fillRect(x + 2, y - 22, 4, 4);
+            ctx.fillRect(x - 8, y - 27, 5, 5);
+            ctx.fillRect(x + 3, y - 27, 5, 5);
+            
+            ctx.fillStyle = '#5a3a2a';
+            ctx.fillRect(x - 12, y - 38, 24, 8);
         }
         
         if (window.isAimingAtPlayer && window.occupantType === 'criminal') {
-            ctx.fillStyle = '#555';
-            ctx.fillRect(x + 15, y - 5, 20, 6);
+            ctx.fillStyle = '#444';
+            ctx.fillRect(x + 20, y, 25, 8);
             
             ctx.strokeStyle = '#ff0000';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(x + 35, y - 2);
-            ctx.lineTo(x + 50, y - 2);
+            ctx.moveTo(x + 45, y + 4);
+            ctx.lineTo(x + 60, y + 4);
             ctx.stroke();
         }
-        
-        ctx.restore();
     }
     
-    renderBirds() {
+    renderBirdsNormal() {
         const ctx = this.ctx;
         
         for (let bird of this.birds) {
-            ctx.save();
-            
-            if (this.isAiming) {
-                const centerX = this.canvas.width / 2;
-                const centerY = this.canvas.height / 2;
-                const mouseOffsetX = (this.mouseX - centerX) / this.zoomLevel;
-                const mouseOffsetY = (this.mouseY - centerY) / this.zoomLevel;
-                
-                ctx.save();
-                ctx.translate(centerX, centerY);
-                ctx.scale(this.zoomLevel, this.zoomLevel);
-                ctx.translate(-centerX + mouseOffsetX, -centerY + mouseOffsetY);
-            }
-            
-            ctx.fillStyle = '#1a1a1a';
-            
-            const wingPhase = Math.sin(bird.wingTimer * 0.01) > 0;
-            
-            ctx.beginPath();
-            ctx.ellipse(bird.x, bird.y, 12, 6, 0, 0, Math.PI * 2);
-            ctx.fill();
-            
-            if (wingPhase) {
-                ctx.beginPath();
-                ctx.moveTo(bird.x - 5, bird.y);
-                ctx.lineTo(bird.x - 15, bird.y - 8);
-                ctx.lineTo(bird.x - 5, bird.y - 2);
-                ctx.fill();
-                
-                ctx.beginPath();
-                ctx.moveTo(bird.x + 5, bird.y);
-                ctx.lineTo(bird.x + 15, bird.y - 8);
-                ctx.lineTo(bird.x + 5, bird.y - 2);
-                ctx.fill();
-            } else {
-                ctx.beginPath();
-                ctx.moveTo(bird.x - 5, bird.y);
-                ctx.lineTo(bird.x - 15, bird.y + 8);
-                ctx.lineTo(bird.x - 5, bird.y + 2);
-                ctx.fill();
-                
-                ctx.beginPath();
-                ctx.moveTo(bird.x + 5, bird.y);
-                ctx.lineTo(bird.x + 15, bird.y + 8);
-                ctx.lineTo(bird.x + 5, bird.y + 2);
-                ctx.fill();
-            }
-            
-            ctx.fillStyle = '#ff6600';
-            ctx.beginPath();
-            ctx.moveTo(bird.x + 12, bird.y);
-            ctx.lineTo(bird.x + 18, bird.y - 2);
-            ctx.lineTo(bird.x + 18, bird.y + 2);
-            ctx.fill();
-            
-            if (this.isAiming) {
-                ctx.restore();
-            }
-            
-            ctx.restore();
+            this.renderBird(ctx, bird.x, bird.y, bird.wingTimer);
         }
+    }
+    
+    renderBirdsZoomed() {
+        const ctx = this.ctx;
+        
+        for (let bird of this.birds) {
+            this.renderBird(ctx, bird.x, bird.y, bird.wingTimer);
+        }
+    }
+    
+    renderBird(ctx, x, y, wingTimer) {
+        ctx.fillStyle = '#1a1a1a';
+        
+        const wingUp = Math.sin(wingTimer * 0.015) > 0;
+        
+        ctx.beginPath();
+        ctx.ellipse(x, y, 14, 7, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        if (wingUp) {
+            ctx.beginPath();
+            ctx.moveTo(x - 6, y);
+            ctx.lineTo(x - 20, y - 12);
+            ctx.lineTo(x - 6, y - 3);
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.moveTo(x + 6, y);
+            ctx.lineTo(x + 20, y - 12);
+            ctx.lineTo(x + 6, y - 3);
+            ctx.fill();
+        } else {
+            ctx.beginPath();
+            ctx.moveTo(x - 6, y);
+            ctx.lineTo(x - 20, y + 12);
+            ctx.lineTo(x - 6, y + 3);
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.moveTo(x + 6, y);
+            ctx.lineTo(x + 20, y + 12);
+            ctx.lineTo(x + 6, y + 3);
+            ctx.fill();
+        }
+        
+        ctx.fillStyle = '#ff6600';
+        ctx.beginPath();
+        ctx.moveTo(x + 14, y);
+        ctx.lineTo(x + 22, y - 3);
+        ctx.lineTo(x + 22, y + 3);
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.arc(x + 10, y - 2, 5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(x + 12, y - 3, 1.5, 0, Math.PI * 2);
+        ctx.fill();
     }
     
     renderSniperRifle() {
         const ctx = this.ctx;
         
+        const gunX = this.canvas.width / 2 + 150;
+        const gunY = this.canvas.height - 100;
+        
         ctx.save();
+        ctx.translate(gunX, gunY);
+        ctx.rotate(-0.1);
         
-        const gunX = this.canvas.width / 2 + 100;
-        const gunY = this.canvas.height - 150;
+        ctx.fillStyle = '#5a4a3a';
+        ctx.fillRect(-180, 20, 220, 35);
         
-        ctx.fillStyle = '#3a2a1a';
-        ctx.fillRect(gunX - 150, gunY + 50, 200, 30);
+        ctx.fillStyle = '#4a3a2a';
+        ctx.fillRect(-160, 55, 50, 60);
         
         ctx.fillStyle = '#2a2a2a';
-        ctx.fillRect(gunX - 100, gunY + 20, 150, 35);
+        ctx.fillRect(-120, 10, 180, 40);
         
         ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(gunX - 80, gunY + 10, 100, 15);
+        ctx.fillRect(0, -5, 100, 12);
+        
+        ctx.fillStyle = '#3a3a3a';
+        ctx.beginPath();
+        ctx.arc(-60, 30, 15, 0, Math.PI * 2);
+        ctx.fill();
         
         ctx.fillStyle = '#2a2a2a';
         ctx.beginPath();
-        ctx.arc(gunX - 30, gunY + 37, 12, 0, Math.PI * 2);
+        ctx.arc(-60, 30, 10, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = '#3a5a3a';
+        ctx.fillRect(-100, -15, 60, 25);
+        
+        ctx.fillStyle = '#2a4a2a';
+        ctx.beginPath();
+        ctx.ellipse(-70, -15, 20, 8, 0, Math.PI, Math.PI * 2);
         ctx.fill();
         
         ctx.restore();
     }
     
-    renderScope() {
+    renderScopeOverlay() {
         const ctx = this.ctx;
-        
-        ctx.save();
-        
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
-        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        const scopeRadius = Math.min(this.canvas.width, this.canvas.height) * 0.4;
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
+        const scopeRadius = Math.min(this.canvas.width, this.canvas.height) * 0.42;
         
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.98)';
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        ctx.save();
         ctx.globalCompositeOperation = 'destination-out';
         ctx.beginPath();
-        ctx.arc(centerX, centerY, scopeRadius, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY, scopeRadius - 10, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
         
-        ctx.globalCompositeOperation = 'source-over';
-        
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 8;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, scopeRadius, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#111';
+        ctx.lineWidth = 15;
         ctx.beginPath();
         ctx.arc(centerX, centerY, scopeRadius - 5, 0, Math.PI * 2);
         ctx.stroke();
         
-        ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
-        ctx.lineWidth = 1.5;
-        
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 5;
         ctx.beginPath();
-        ctx.moveTo(centerX, centerY - scopeRadius + 20);
-        ctx.lineTo(centerX, centerY - 30);
+        ctx.arc(centerX, centerY, scopeRadius - 12, 0, Math.PI * 2);
         ctx.stroke();
         
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(centerX, centerY + 30);
-        ctx.lineTo(centerX, centerY + scopeRadius - 20);
+        ctx.arc(centerX, centerY, scopeRadius - 18, 0, Math.PI * 2);
         ctx.stroke();
         
-        ctx.beginPath();
-        ctx.moveTo(centerX - scopeRadius + 20, centerY);
-        ctx.lineTo(centerX - 30, centerY);
-        ctx.stroke();
+        this.renderCrosshair(centerX, centerY, scopeRadius);
         
-        ctx.beginPath();
-        ctx.moveTo(centerX + 30, centerY);
-        ctx.lineTo(centerX + scopeRadius - 20, centerY);
-        ctx.stroke();
-        
-        ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-        ctx.lineWidth = 1;
-        for (let i = 1; i <= 5; i++) {
-            const tickLength = 20;
-            const tickSpacing = 40;
+        if (this.isInvincible) {
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.6)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, scopeRadius - 40, 0, Math.PI * 2);
+            ctx.stroke();
             
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.1)';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, scopeRadius - 40, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+    
+    renderCrosshair(centerX, centerY, scopeRadius) {
+        const ctx = this.ctx;
+        
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)';
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY - scopeRadius + 50);
+        ctx.lineTo(centerX, centerY - 25);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY + 25);
+        ctx.lineTo(centerX, centerY + scopeRadius - 50);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(centerX - scopeRadius + 50, centerY);
+        ctx.lineTo(centerX - 25, centerY);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(centerX + 25, centerY);
+        ctx.lineTo(centerX + scopeRadius - 50, centerY);
+        ctx.stroke();
+        
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
+        ctx.lineWidth = 1;
+        
+        const tickSpacing = 50;
+        const tickLength = 15;
+        
+        for (let i = 1; i <= 6; i++) {
             ctx.beginPath();
             ctx.moveTo(centerX - i * tickSpacing, centerY);
             ctx.lineTo(centerX - i * tickSpacing, centerY + tickLength);
@@ -740,9 +830,9 @@ class SniperGame {
         }
         
         ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY, 8, 0, Math.PI * 2);
         ctx.stroke();
         
         ctx.fillStyle = 'rgba(255, 0, 0, 0.9)';
@@ -750,20 +840,21 @@ class SniperGame {
         ctx.arc(centerX, centerY, 2, 0, Math.PI * 2);
         ctx.fill();
         
-        if (this.isInvincible) {
-            ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)';
-            ctx.lineWidth = 4;
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+        ctx.lineWidth = 0.5;
+        
+        const smallTickSpacing = 10;
+        for (let i = 1; i <= 4; i++) {
             ctx.beginPath();
-            ctx.arc(centerX, centerY, scopeRadius - 30, 0, Math.PI * 2);
+            ctx.moveTo(centerX - 20 - i * smallTickSpacing, centerY);
+            ctx.lineTo(centerX - 20 - i * smallTickSpacing, centerY + 5);
             ctx.stroke();
             
-            ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
             ctx.beginPath();
-            ctx.arc(centerX, centerY, scopeRadius - 30, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.moveTo(centerX + 20 + i * smallTickSpacing, centerY);
+            ctx.lineTo(centerX + 20 + i * smallTickSpacing, centerY + 5);
+            ctx.stroke();
         }
-        
-        ctx.restore();
     }
 }
 
